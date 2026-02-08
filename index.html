@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Taste Hub - 今晚食乜餸助手</title>
+    
+    <!-- Mobile App Settings -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Taste Hub">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/96/shopping-basket.png">
+    <link rel="icon" type="image/png" href="https://img.icons8.com/fluency/96/shopping-basket.png">
+
+    <!-- React & Tailwind Libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;700;900&display=swap');
+        body { font-family: 'Noto Sans HK', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .glass-nav { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+    </style>
+</head>
+<body class="bg-zinc-50 text-zinc-900">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- Configuration ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "", 
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
+        };
+        
+        // Initialize Firebase safely
+        if (!firebase.apps.length) {
+            try {
+                firebase.initializeApp(firebaseConfig);
+            } catch(e) { console.error("Firebase Init Error", e); }
+        }
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const appId = 'family-dinner-planner'; 
+
+        const { useState, useMemo, useEffect, useCallback } = React;
+
+        // --- Built-in Icons (No External Dependency) ---
+        const Icons = {
+            ChevronLeft: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>,
+            Search: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
+            Plus: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
+            Clock: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+            Shuffle: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l14.2-12.6c.8-1.1 2-1.7 3.3-1.7H22"/><path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l3.6 3.2"/><path d="M15.1 13.1l3.6 3.2c.8 1.1 2 1.7 3.3 1.7H22"/></svg>,
+            ChevronRight: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>,
+            Pencil: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>,
+            Check: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>,
+            Trash2: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>,
+            Share2: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>,
+            ShoppingBasket: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 11 4-7"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8c.9 0 1.8-.7 2-1.6l1.7-7.4"/><path d="m9 11 1 9"/><path d="m15 11-1 9"/></svg>,
+            Sparkles: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M3 5h4"/><path d="M3 9h4"/></svg>,
+            Save: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+            CheckCircle2: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+        };
+
+        const Icon = ({ name, className, ...props }) => {
+            const Component = Icons[name];
+            if (!Component) return null;
+            return <span className={className}><Component width="100%" height="100%" {...props} /></span>;
+        };
+
+        const DEFAULT_DISHES = [
+            { id: 1, name: '沙茶醬炒牛肉', category: '牛肉', ingredients: ['牛肉', '沙茶醬', '青椒', '蒜頭'] },
+            { id: 2, name: '薯仔牛肉', category: '牛肉', ingredients: ['牛肉', '薯仔', '洋蔥'] },
+            { id: 3, name: '蕃茄牛肉炒蛋', category: '牛肉', ingredients: ['牛肉', '蕃茄', '雞蛋'] },
+            { id: 4, name: '牛肉餅', category: '牛肉', ingredients: ['牛肉碎', '馬蹄', '蔥花'] },
+            { id: 5, name: '榨菜蒸牛肉', category: '牛肉', ingredients: ['牛肉', '榨菜', '薑絲'] },
+            { id: 6, name: '韓式炒粉絲', category: '牛肉', ingredients: ['牛肉', '韓式冬粉', '洋蔥', '紅蘿蔔'] },
+            { id: 7, name: '菜心炒牛肉', category: '牛肉', ingredients: ['牛肉', '菜心', '薑片'] },
+            { id: 8, name: '金菇肥牛', category: '牛肉', ingredients: ['肥牛片', '金菇', '沙茶醬'] },
+            { id: 9, name: '麵豉蒸排骨', category: '豬肉', ingredients: ['排骨', '麵豉醬', '蒜末'] },
+            { id: 10, name: '冬瓜炆豬肉', category: '豬肉', ingredients: ['豬肉', '冬瓜', '薑片'] },
+            { id: 11, name: '肉碎白菜煲', category: '豬肉', ingredients: ['肉碎', '白菜仔', '粉絲'] },
+            { id: 12, name: '麻婆豆腐', category: '豬肉', ingredients: ['肉碎', '軟豆腐', '辣豆瓣醬'] },
+            { id: 13, name: '茄子煲', category: '豬肉', ingredients: ['肉碎', '茄子', '鹹魚', '蠔油'] },
+            { id: 14, name: '洋蔥豬扒', category: '豬肉', ingredients: ['豬扒', '洋蔥', '茄汁'] },
+            { id: 15, name: '鹹蛋蒸肉餅', category: '豬肉', ingredients: ['豬肉碎', '鹹蛋'] },
+            { id: 16, name: '土魷蒸肉餅', category: '豬肉', ingredients: ['豬肉碎', '土魷', '馬蹄'] },
+            { id: 17, name: '梅菜蒸豬肉', category: '豬肉', ingredients: ['半肥瘦豬肉', '梅菜'] },
+            { id: 18, name: '蓮藕餅', category: '豬肉', ingredients: ['豬肉碎', '蓮藕', '蔥花'] },
+            { id: 19, name: '生姜燒', category: '豬肉', ingredients: ['豬肉片', '薑泥', '味醂'] },
+            { id: 20, name: '螞蟻上樹', category: '豬肉', ingredients: ['肉碎', '粉絲', '辣豆瓣醬'] },
+            { id: 21, name: '肉碎豆角', category: '豬肉', ingredients: ['肉碎', '豆角', '蒜頭'] },
+            { id: 22, name: '辣炒豬肉', category: '豬肉', ingredients: ['五花肉片', '韓式辣醬', '洋蔥'] },
+            { id: 23, name: '雞煲', category: '雞肉', ingredients: ['雞件', '洋蔥', '芹菜', '雞煲醬'] },
+            { id: 24, name: '咖喱薯仔雞', category: '雞肉', ingredients: ['雞件', '薯仔', '咖喱磚'] },
+            { id: 25, name: '冬菇炆雞', category: '雞肉', ingredients: ['雞件', '冬菇', '蠔油'] },
+            { id: 26, name: '南瓜炒雞', category: '雞肉', ingredients: ['雞件', '南瓜', '蒜頭'] },
+            { id: 27, name: '紅棗枸杞蒸雞', category: '雞肉', ingredients: ['雞件', '紅棗', '枸杞'] },
+            { id: 28, name: '栗子炆雞', category: '雞肉', ingredients: ['雞件', '栗子', '蠔油'] },
+            { id: 29, name: '煎雞翼', category: '雞肉', ingredients: ['雞翼', '鹽', '黑胡椒'] },
+            { id: 30, name: '勝瓜炒雞', category: '雞肉', ingredients: ['雞肉片', '勝瓜', '雲耳'] },
+            { id: 31, name: '親子丼', category: '雞肉', ingredients: ['雞肉', '雞蛋', '洋蔥', '日式高湯'] },
+            { id: 32, name: '黃金蝦', category: '海鮮', ingredients: ['大蝦', '鹹蛋黃', '牛油'] },
+            { id: 33, name: '粟米魚塊', category: '海鮮', ingredients: ['魚柳', '粟米蓉', '雞蛋'] },
+            { id: 34, name: '煎三文魚', category: '海鮮', ingredients: ['三文魚柳', '檸檬', '黑胡椒', '香草'] },
+            { id: 35, name: '麵豉蒸魚', category: '海鮮', ingredients: ['全魚', '麵豉醬', '薑絲'] },
+            { id: 36, name: '炒蜆', category: '海鮮', ingredients: ['蜆', '豆豉辣椒醬', '九層塔'] },
+            { id: 37, name: '蒸扇貝', category: '海鮮', ingredients: ['扇貝', '粉絲', '蒜蓉'] },
+            { id: 38, name: '芝士番茄炒蘑菇', category: '蔬菜', ingredients: ['蘑菇', '番茄', '芝士碎'] },
+            { id: 39, name: '炒年糕', category: '蔬菜', ingredients: ['年糕', '椰菜', '洋蔥', '韓式辣醬'] },
+            { id: 40, name: '炒齋', category: '蔬菜', ingredients: ['雲耳', '雪耳', '紅蘿蔔', '腐竹'] },
+            { id: 41, name: '蕃茄炒蛋', category: '蔬菜', ingredients: ['蕃茄', '雞蛋', '蔥'] },
+            { id: 42, name: '乾煸四季豆', category: '蔬菜', ingredients: ['四季豆', '肉碎', '蝦米'] },
+            { id: 43, name: '芫荽魚片湯', category: '湯羹', ingredients: ['魚片', '芫荽', '皮蛋', '豆腐'] },
+            { id: 44, name: '蕃茄洋蔥湯', category: '湯羹', ingredients: ['蕃茄', '洋蔥', '薯仔', '瘦肉'] },
+            { id: 45, name: '冬瓜鹹蛋湯', category: '湯羹', ingredients: ['冬瓜', '鹹蛋', '肉碎'] },
+            { id: 46, name: '泡菜豬肉湯', category: '湯羹', ingredients: ['泡菜', '豬五花', '豆腐'] },
+            { id: 47, name: '胡椒豬肚湯', category: '湯羹', ingredients: ['豬肚', '白胡椒', '鹹菜'] },
+            { id: 48, name: '冬瓜湯', category: '湯羹', ingredients: ['冬瓜', '薏米', '瘦肉'] },
+            { id: 49, name: '魚頭豆腐湯', category: '湯羹', ingredients: ['魚頭', '豆腐', '薑'] },
+            { id: 50, name: '綠豆沙', category: '甜品', ingredients: ['綠豆', '陳皮', '冰糖'] },
+            { id: 51, name: '蓮子雪耳紅棗湯', category: '甜品', ingredients: ['蓮子', '雪耳', '紅棗', '冰糖'] },
+            { id: 52, name: '炒烏冬', category: '炒粉麵飯', ingredients: ['烏冬', '肉絲', '椰菜'] },
+            { id: 53, name: '雪菜肉絲米', category: '炒粉麵飯', ingredients: ['米粉', '雪菜', '肉絲'] },
+            { id: 54, name: '吉野家牛肉飯', category: '炒粉麵飯', ingredients: ['肥牛片', '洋蔥', '日式醬汁'] },
+            { id: 55, name: '蝦粥', category: '炒粉麵飯', ingredients: ['白米', '蝦', '薑絲'] },
+            { id: 56, name: '炒飯', category: '炒粉麵飯', ingredients: ['白飯', '雞蛋', '火腿'] },
+            { id: 57, name: '牛肉 (火鍋)', category: '打邊爐', ingredients: ['肥牛片', '手切牛'] },
+            { id: 58, name: '墨丸', category: '打邊爐', ingredients: ['墨魚丸'] },
+            { id: 59, name: '魚蛋', category: '打邊爐', ingredients: ['魚蛋'] },
+            { id: 60, name: '魚角', category: '打邊爐', ingredients: ['魚角'] },
+            { id: 61, name: '炸魚皮', category: '打邊爐', ingredients: ['炸魚皮'] },
+            { id: 62, name: '雞肉 (火鍋)', category: '打邊爐', ingredients: ['雞件/雞肉片'] },
+            { id: 63, name: '豬肉片 (火鍋)', category: '打邊爐', ingredients: ['豬肉片'] },
+            { id: 64, name: '菜 (火鍋)', category: '打邊爐', ingredients: ['生菜', '油麥菜', '娃娃菜'] },
+            { id: 65, name: '芫茜餃', category: '打邊爐', ingredients: ['芫茜餃'] },
+            { id: 66, name: '餃', category: '打邊爐', ingredients: ['水餃'] },
+            { id: 67, name: '響鈴', category: '打邊爐', ingredients: ['響鈴'] },
+            { id: 68, name: '坐墊', category: '打邊爐', ingredients: ['魚肉坐墊'] },
+            { id: 69, name: '烏冬 (火鍋)', category: '打邊爐', ingredients: ['烏冬'] },
+            { id: 70, name: '虫草花', category: '打邊爐', ingredients: ['虫草花'] },
+        ];
+
+        const CATEGORIES = [
+            { name: '牛肉', icon: '🐮', color: 'from-rose-400 to-rose-600', bg: 'bg-rose-50', type: 'meat' },
+            { name: '豬肉', icon: '🐷', color: 'from-pink-400 to-pink-600', bg: 'bg-pink-50', type: 'meat' },
+            { name: '雞肉', icon: '🐔', color: 'from-orange-400 to-orange-600', bg: 'bg-orange-50', type: 'meat' },
+            { name: '海鮮', icon: '🐟', color: 'from-blue-400 to-blue-600', bg: 'bg-blue-50', type: 'meat' },
+            { name: '打邊爐', icon: '🥘', color: 'from-emerald-400 to-emerald-600', bg: 'bg-emerald-50', type: 'other' },
+            { name: '蔬菜', icon: '🥦', color: 'from-green-400 to-green-600', bg: 'bg-green-50', type: 'veg' },
+            { name: '湯羹', icon: '🍲', color: 'from-amber-400 to-amber-600', bg: 'bg-amber-50', type: 'soup' },
+            { name: '甜品', icon: '🍡', color: 'from-purple-400 to-purple-600', bg: 'bg-purple-50', type: 'other' },
+            { name: '炒粉麵飯', icon: '🍝', color: 'from-yellow-400 to-yellow-600', bg: 'bg-yellow-50', type: 'other' },
+        ];
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [dishes, setDishes] = useState(DEFAULT_DISHES);
+            const [selectedIds, setSelectedIds] = useState([]);
+            const [view, setView] = useState('categories');
+            const [activeCategory, setActiveCategory] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [purchasedIngredients, setPurchasedIngredients] = useState(new Set());
+            const [formData, setFormData] = useState({ id: null, name: '', category: '蔬菜', ingredients: '' });
+
+            // 1. Auth Setup
+            useEffect(() => {
+                const initAuth = async () => {
+                    try {
+                        const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                        if (token) await auth.signInWithCustomToken(token);
+                        else await auth.signInAnonymously();
+                    } catch (e) { console.warn("Auth warning:", e); }
+                };
+                initAuth();
+                return auth.onAuthStateChanged(setUser);
+            }, []);
+
+            // 2. Firestore Sync
+            useEffect(() => {
+                if (!user) return;
+                const dishesRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dishes');
+                
+                const unsubscribe = dishesRef.onSnapshot(snapshot => {
+                    const data = snapshot.docs.map(doc => doc.data());
+                    if (data.length > 0) {
+                        setDishes(data);
+                    } else {
+                        // Seed only if empty
+                        DEFAULT_DISHES.forEach(d => dishesRef.doc(d.id.toString()).set(d));
+                    }
+                }, error => console.error("Firestore sync error", error));
+                
+                return () => unsubscribe();
+            }, [user]);
+
+            const seasonalTip = useMemo(() => {
+                const month = new Date().getMonth() + 1;
+                if (month >= 3 && month <= 5) return { text: "春天潮濕，建議多加些芫荽、生薑去濕氣。", icon: 'Cloud' };
+                if (month >= 6 && month <= 8) return { text: "夏天炎熱，適合清熱消暑的冬瓜湯。", icon: 'Sun' };
+                if (month >= 9 && month <= 11) return { text: "秋天乾燥，記得多吃點蓮藕潤燥。", icon: 'Wind' };
+                return { text: "冬天寒冷，來點黑椒、麻辣暖胃吧。", icon: 'Snowflake' };
+            }, []);
+
+            const aggregatedIngredients = useMemo(() => {
+                const map = new Map();
+                dishes.filter(d => selectedIds.includes(d.id)).forEach(dish => {
+                    dish.ingredients.forEach(ing => {
+                        const name = ing.trim();
+                        if (!name) return;
+                        map.set(name, (map.get(name) || 0) + 1);
+                    });
+                });
+                return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+            }, [dishes, selectedIds]);
+
+            // --- Handlers ---
+            const startEditing = (dish) => {
+                setFormData({
+                    id: dish.id,
+                    name: dish.name,
+                    category: dish.category,
+                    ingredients: dish.ingredients.join(', ')
+                });
+                setView('edit');
+            };
+
+            const deleteDish = async (id) => {
+                if(confirm('確定要從資料庫永久刪除嗎？')) {
+                    if (user) {
+                        db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dishes').doc(id.toString()).delete();
+                    }
+                    // Optimistic update
+                    setDishes(prev => prev.filter(d => d.id !== id));
+                    setSelectedIds(prev => prev.filter(i => i !== id));
+                    setView('category_detail'); 
+                }
+            };
+
+            const handleRandomize = () => {
+                const getBy = (t) => dishes.filter(d => CATEGORIES.find(c => c.name === d.category)?.type === t);
+                const picks = [getBy('meat'), getBy('veg'), getBy('soup')].map(list => list.length ? list[Math.floor(Math.random() * list.length)].id : null).filter(Boolean);
+                setSelectedIds(picks);
+                setView('meal');
+            };
+
+            const shareWA = () => {
+                const names = dishes.filter(d => selectedIds.includes(d.id)).map(d => `🍱 ${d.name}`).join('\n');
+                const ings = aggregatedIngredients.map(i => `- ${i.name}${i.count > 1 ? ` (x${i.count})` : ''}`).join('\n');
+                const text = `🛒 *今晚食乜餸買餸清單*\n\n*菜式：*\n${names}\n\n*食材：*\n${ings}`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+            };
+
+            const saveDish = async (e) => {
+                e.preventDefault();
+                const id = formData.id || Date.now();
+                const dish = { id, name: formData.name, category: formData.category, ingredients: formData.ingredients.split(/[,，\s]+/).filter(Boolean) };
+                
+                // Optimistic UI update
+                setDishes(prev => {
+                    const idx = prev.findIndex(d => d.id === id);
+                    if (idx >= 0) { const n = [...prev]; n[idx] = dish; return n; }
+                    return [dish, ...prev];
+                });
+
+                if (user) {
+                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dishes').doc(id.toString()).set(dish);
+                }
+                
+                setView('categories');
+            };
+
+            const removeDishSelection = (id) => {
+                setSelectedIds(prev => prev.filter(i => i !== id));
+                setPurchasedIngredients(prev => {
+                    const next = new Set(prev);
+                    Array.from(next).forEach(key => { if (key.startsWith(`${id}-`)) next.delete(key); });
+                    return next;
+                });
+            };
+
+            const toggleSelect = (id) => {
+                setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+            };
+
+            const toggleIngredient = (dishId, ingName) => {
+                const key = `${dishId}-${ingName}`;
+                setPurchasedIngredients(prev => {
+                    const next = new Set(prev);
+                    if (next.has(key)) next.delete(key); else next.add(key);
+                    return next;
+                });
+            };
+
+            const greeting = new Date().getHours() < 12 ? "今朝食乜好？" : "今晚煮乜餸？";
+
+            // Filters
+            const currentCategoryDishes = useMemo(() => dishes.filter(d => d.category === activeCategory), [dishes, activeCategory]);
+            const searchResults = useMemo(() => searchTerm ? dishes.filter(d => d.name.includes(searchTerm)) : [], [dishes, searchTerm]);
+            const selectedDishes = useMemo(() => dishes.filter(d => selectedIds.includes(d.id)), [dishes, selectedIds]);
+
+            return (
+                <div className="min-h-screen pb-32">
+                    {/* Header */}
+                    <nav className="sticky top-0 z-50 glass-nav border-b border-zinc-200/50 px-6 py-5 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            {view !== 'categories' && <button onClick={() => setView('categories')} className="text-zinc-400 active:scale-90 transition-transform"><Icon name="ChevronLeft" className="w-6 h-6 text-zinc-600" /></button>}
+                            <div>
+                                <h1 className="text-xl font-black tracking-tight">TASTE HUB</h1>
+                                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Dishes Planner</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => setView('search')} className="p-2.5 rounded-2xl bg-white border border-zinc-200 shadow-sm active:scale-90 transition-transform"><Icon name="Search" className="w-5 h-5 text-zinc-600" /></button>
+                            <button onClick={() => {setFormData({id: null, name: '', category: '蔬菜', ingredients: ''}); setView('add');}} className="p-2.5 rounded-2xl bg-zinc-900 text-white shadow-lg active:scale-90 transition-transform"><Icon name="Plus" className="w-5 h-5" /></button>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-md mx-auto px-6 pt-8">
+                        {/* 1. Dashboard */}
+                        {view === 'categories' && (
+                            <div className="animate-in fade-in duration-300">
+                                <header className="mb-8">
+                                    <div className="flex items-center gap-2 mb-2 text-orange-500"><Icon name="Clock" className="w-4 h-4" /><span className="text-xs font-bold uppercase tracking-widest">Dishes Planner</span></div>
+                                    <h2 className="text-4xl font-black text-zinc-900">{greeting}</h2>
+                                    <div className="mt-4 bg-orange-50 p-4 rounded-3xl flex items-start gap-3 border border-orange-100">
+                                        <div className="text-orange-500 mt-1"><Icon name="Plus" className="w-4 h-4" /></div>
+                                        <p className="text-xs font-bold text-orange-800/80 leading-relaxed">{seasonalTip.text}</p>
+                                    </div>
+                                </header>
+                                <button onClick={handleRandomize} className="w-full mb-6 bg-gradient-to-r from-zinc-900 to-zinc-800 p-6 rounded-[2rem] text-white flex items-center justify-between shadow-xl active:scale-95 transition-all">
+                                    <div className="flex items-center gap-3"><Icon name="Shuffle" className="w-5 h-5 text-orange-500" /><span className="font-black text-xl">「隨便啦！」</span></div>
+                                    <Icon name="ChevronRight" className="w-6 h-6 text-zinc-400" />
+                                </button>
+                                <div className="grid grid-cols-3 gap-4">
+                                    {CATEGORIES.map(cat => (
+                                        <button key={cat.name} onClick={() => { setActiveCategory(cat.name); setView('category_detail'); }} className={`relative flex flex-col items-center justify-center aspect-square rounded-[2rem] ${cat.bg} active:scale-90 transition-all border-2 border-transparent hover:border-zinc-200`}>
+                                            <span className="text-4xl mb-2">{cat.icon}</span>
+                                            <span className="font-bold text-xs text-zinc-800">{cat.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 2. Category Detail */}
+                        {view === 'category_detail' && (
+                            <div className="animate-in slide-in-from-right-8 duration-300">
+                                <h2 className="text-4xl font-black mb-6 flex items-center gap-2">
+                                    <span>{CATEGORIES.find(c => c.name === activeCategory)?.icon}</span>
+                                    {activeCategory}
+                                </h2>
+                                <div className="grid gap-4">
+                                    {currentCategoryDishes.map(dish => (
+                                        <div key={dish.id} className={`flex items-center rounded-3xl border-2 p-1 transition-all ${selectedIds.includes(dish.id) ? 'bg-zinc-900 border-zinc-900 text-white shadow-xl' : 'bg-white border-zinc-100 shadow-sm'}`}>
+                                            <button onClick={() => startEditing(dish)} className="p-5 text-zinc-400 hover:text-orange-500"><Icon name="Pencil" className="w-5 h-5" /></button>
+                                            <div onClick={() => toggleSelect(dish.id)} className="flex-grow py-5 pr-6 flex items-center justify-between cursor-pointer">
+                                                <span className="font-bold text-lg">{dish.name}</span>
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${selectedIds.includes(dish.id) ? 'bg-orange-500 border-orange-500' : 'border-zinc-200'}`}>
+                                                    {selectedIds.includes(dish.id) && <Icon name="Check" className="w-4 h-4 text-white" />}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 3. Meal List */}
+                        {view === 'meal' && (
+                            <div className="animate-in slide-in-from-bottom-8 duration-500 space-y-8">
+                                <div className="bg-zinc-900 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden">
+                                    <h2 className="text-4xl font-black mb-4">準備開飯！</h2>
+                                    <button onClick={shareWA} className="bg-white/10 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2"><Icon name="Share2" className="w-3 h-3" /> 分享到 WhatsApp</button>
+                                    <Icon name="ShoppingBasket" className="absolute -bottom-4 -right-4 w-32 h-32 opacity-10 -rotate-12" />
+                                </div>
+                                <section className="bg-zinc-100 p-6 rounded-[2rem] border-2 border-dashed border-zinc-200">
+                                    <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Icon name="Sparkles" className="w-3 h-3 text-orange-500" /> Aggregated Ingredients</h3>
+                                    <div className="flex flex-wrap gap-2">
+                                        {aggregatedIngredients.map((item, idx) => (
+                                            <div key={idx} className="bg-white border px-4 py-2 rounded-2xl text-sm font-bold shadow-sm">{item.name} <span className="text-orange-500 ml-1">x{item.count}</span></div>
+                                        ))}
+                                    </div>
+                                </section>
+                                {selectedDishes.map(dish => (
+                                    <div key={dish.id} className="bg-white rounded-3xl p-8 shadow-xl border border-zinc-100">
+                                        <div className="flex justify-between items-center mb-6 pb-4 border-b border-zinc-50">
+                                            <h3 className="text-2xl font-black">{dish.name}</h3>
+                                            <button onClick={() => removeDishSelection(dish.id)} className="text-zinc-300 hover:text-rose-500"><Icon name="Trash2" className="w-6 h-6" /></button>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {dish.ingredients.map((ing, i) => {
+                                                const isPurchased = purchasedIngredients.has(`${dish.id}-${ing}`);
+                                                return (
+                                                    <div key={i} onClick={() => toggleIngredient(dish.id, ing)} className={`flex items-center gap-4 px-5 py-4 rounded-2xl border-2 bg-white border-zinc-100 shadow-sm cursor-pointer transition-all ${isPurchased ? 'opacity-50' : ''}`}>
+                                                        <div className={`w-6 h-6 rounded-xl border-2 flex items-center justify-center ${isPurchased ? 'bg-zinc-900 border-zinc-900' : 'border-zinc-200'}`}>
+                                                            {isPurchased && <Icon name="Check" className="w-4 h-4 text-white" />}
+                                                        </div>
+                                                        <span className={`font-bold text-zinc-700 ${isPurchased ? 'line-through' : ''}`}>{ing}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* 4. Add/Edit Form */}
+                        {(view === 'add' || view === 'edit') && (
+                            <form onSubmit={saveDish} className="space-y-6 animate-in fade-in duration-300">
+                                <h2 className="text-4xl font-black">{view === 'add' ? 'New' : 'Edit'} Dish</h2>
+                                <input required type="text" className="w-full px-6 py-5 rounded-3xl border-2 border-zinc-100 focus:border-orange-400 outline-none text-xl font-bold" placeholder="菜名..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                <div className="grid grid-cols-3 gap-2">
+                                    {CATEGORIES.map(c => (
+                                        <button key={c.name} type="button" onClick={() => setFormData({...formData, category: c.name})} className={`py-4 rounded-2xl text-[10px] font-black border-2 flex flex-col items-center justify-center gap-1 ${formData.category === c.name ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white text-zinc-400 border-zinc-100'}`}>
+                                            <span className="text-xl">{c.icon}</span>
+                                            {c.name}
+                                        </button>
+                                    ))}
+                                </div>
+                                <textarea rows="4" className="w-full px-6 py-5 rounded-3xl border-2 border-zinc-100 focus:border-orange-400 outline-none font-bold" placeholder="食材 (用逗號隔開)..." value={formData.ingredients} onChange={e => setFormData({...formData, ingredients: e.target.value})} />
+                                <button type="submit" className="w-full bg-zinc-900 text-white py-6 rounded-3xl font-black text-xl hover:bg-orange-600 shadow-2xl flex items-center justify-center gap-3"><Icon name="Save" className="w-6 h-6" /> 儲存食譜</button>
+                                {view === 'edit' && <button type="button" onClick={() => deleteDish(formData.id)} className="w-full py-5 rounded-3xl font-bold text-rose-500 bg-rose-50 border-2 border-rose-100">永久刪除</button>}
+                            </form>
+                        )}
+                        
+                        {/* 5. Search */}
+                        {view === 'search' && (
+                            <div className="animate-in fade-in duration-300">
+                                <h2 className="text-4xl font-black mb-6">Search</h2>
+                                <input autoFocus type="text" className="w-full px-6 py-5 rounded-3xl border-2 border-zinc-100 outline-none text-xl font-bold mb-4" placeholder="搜尋菜名..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                <div className="grid gap-4">
+                                    {dishes.filter(d => d.name.includes(searchTerm)).map(dish => (
+                                        <div key={dish.id} onClick={() => toggleSelect(dish.id)} className={`p-6 rounded-3xl border-2 flex items-center justify-between cursor-pointer ${selectedIds.includes(dish.id) ? 'bg-zinc-900 text-white border-zinc-900' : 'bg-white border-zinc-100'}`}>
+                                            <div><span className="text-[10px] font-black opacity-50 block mb-1 uppercase tracking-widest">{dish.category}</span><span className="text-xl font-bold">{dish.name}</span></div>
+                                            {selectedIds.includes(dish.id) && <Icon name="CheckCircle2" className="w-6 h-6 text-orange-500" />}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {/* Footer Floating Bar */}
+                    {selectedIds.length > 0 && view !== 'meal' && (
+                        <div className="fixed bottom-8 left-0 right-0 px-6 z-50">
+                            <div className="max-w-md mx-auto bg-white/80 backdrop-blur-2xl rounded-[2.5rem] p-4 flex items-center justify-between shadow-2xl border border-white">
+                                <div className="flex items-center gap-5 pl-4">
+                                    <div className="bg-orange-500 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white text-xl shadow-lg">{selectedIds.length}</div>
+                                    <div className="flex flex-col leading-none"><span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1 text-zinc-500">Picked</span><span className="font-black text-zinc-900">道菜式</span></div>
+                                </div>
+                                <button onClick={() => setView('meal')} className="bg-zinc-900 text-white px-10 py-4 rounded-[1.8rem] font-black flex items-center gap-3 active:scale-95 transition-all">去買餸 <Icon name="ChevronRight" className="w-5 h-5" /></button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
