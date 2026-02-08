@@ -28,13 +28,28 @@
         body { font-family: 'Noto Sans HK', sans-serif; -webkit-tap-highlight-color: transparent; }
         .glass-nav { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
+        #root:empty::before { content: 'Loading Taste Hub...'; display: block; padding: 20px; color: #666; text-align: center; }
     </style>
 </head>
 <body class="bg-zinc-50 text-zinc-900">
+    <!-- Error Display Container -->
+    <div id="error-display" style="display:none; padding: 20px; background: #fee; color: #c00; border-bottom: 1px solid #ecc;"></div>
+    
     <div id="root"></div>
+
+    <script>
+        // Global Error Handler to show issues on screen
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            var display = document.getElementById('error-display');
+            display.style.display = 'block';
+            display.innerHTML += '<strong>Error:</strong> ' + msg + '<br><small>' + url + ':' + lineNo + '</small><br><br>';
+            return false;
+        };
+    </script>
 
     <script type="text/babel">
         // --- Configuration ---
+        // Safeguard: Check if config variables exist, otherwise use empty object to trigger offline mode
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
             apiKey: "", 
             authDomain: "",
@@ -44,20 +59,29 @@
             appId: ""
         };
         
-        // Initialize Firebase safely
-        if (!firebase.apps.length) {
-            try {
-                firebase.initializeApp(firebaseConfig);
-            } catch(e) { console.error("Firebase Init Error", e); }
-        }
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        // Dynamic App ID
+        let auth = null;
+        let db = null;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'family-dinner-planner';
+
+        // Initialize Firebase safely
+        try {
+            if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                auth = firebase.auth();
+                db = firebase.firestore();
+                console.log("Firebase initialized successfully.");
+            } else {
+                console.warn("No Firebase API Key found. App running in Offline/Demo mode.");
+            }
+        } catch(e) { 
+            console.warn("Firebase initialization failed. App running in Offline/Demo mode.", e); 
+        }
 
         const { useState, useMemo, useEffect, useCallback } = React;
 
-        // --- Built-in SVG Icons (No external dependencies) ---
+        // --- Built-in SVG Icons ---
         const Icons = {
             ChevronLeft: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>,
             Search: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
@@ -183,11 +207,12 @@
 
             // 1. Auth Setup
             useEffect(() => {
+                // Only try auth if valid key exists
+                if (!auth) return;
+                
                 const initAuth = async () => {
                     try {
-                        const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                        if (token) await auth.signInWithCustomToken(token);
-                        else await auth.signInAnonymously();
+                        await auth.signInAnonymously();
                     } catch (e) { console.warn("Auth warning:", e); }
                 };
                 initAuth();
@@ -196,16 +221,13 @@
 
             // 2. Firestore Sync
             useEffect(() => {
-                if (!user) return;
+                if (!user || !db) return;
                 const dishesRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dishes');
                 
                 const unsubscribe = dishesRef.onSnapshot(snapshot => {
                     const data = snapshot.docs.map(doc => doc.data());
                     if (data.length > 0) {
                         setDishes(data);
-                    } else {
-                        // Seed only if empty
-                        DEFAULT_DISHES.forEach(d => dishesRef.doc(d.id.toString()).set(d));
                     }
                 }, error => console.error("Firestore sync error", error));
                 
@@ -245,7 +267,7 @@
 
             const deleteDish = async (id) => {
                 if(confirm('確定要從資料庫永久刪除嗎？')) {
-                    if (user) {
+                    if (user && db) {
                         db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dishes').doc(id.toString()).delete();
                     }
                     // Optimistic update
@@ -281,7 +303,7 @@
                     return [dish, ...prev];
                 });
 
-                if (user) {
+                if (user && db) {
                     await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dishes').doc(id.toString()).set(dish);
                 }
                 
