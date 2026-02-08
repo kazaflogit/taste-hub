@@ -18,7 +18,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK (Optional) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -28,28 +28,14 @@
         body { font-family: 'Noto Sans HK', sans-serif; -webkit-tap-highlight-color: transparent; }
         .glass-nav { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
-        #root:empty::before { content: 'Loading Taste Hub...'; display: block; padding: 20px; color: #666; text-align: center; }
+        .hide-file-input { display: none; }
     </style>
 </head>
 <body class="bg-zinc-50 text-zinc-900">
-    <!-- Error Display Container -->
-    <div id="error-display" style="display:none; padding: 20px; background: #fee; color: #c00; border-bottom: 1px solid #ecc;"></div>
-    
     <div id="root"></div>
-
-    <script>
-        // Global Error Handler to show issues on screen
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            var display = document.getElementById('error-display');
-            display.style.display = 'block';
-            display.innerHTML += '<strong>Error:</strong> ' + msg + '<br><small>' + url + ':' + lineNo + '</small><br><br>';
-            return false;
-        };
-    </script>
 
     <script type="text/babel">
         // --- Configuration ---
-        // Safeguard: Check if config variables exist, otherwise use empty object to trigger offline mode
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
             apiKey: "", 
             authDomain: "",
@@ -61,25 +47,17 @@
         
         let auth = null;
         let db = null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'family-dinner-planner';
-
-        // Initialize Firebase safely
         try {
-            if (firebaseConfig.apiKey && firebaseConfig.projectId) {
-                if (!firebase.apps.length) {
-                    firebase.initializeApp(firebaseConfig);
-                }
+            if (firebaseConfig.apiKey && !firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
                 auth = firebase.auth();
                 db = firebase.firestore();
-                console.log("Firebase initialized successfully.");
-            } else {
-                console.warn("No Firebase API Key found. App running in Offline/Demo mode.");
             }
-        } catch(e) { 
-            console.warn("Firebase initialization failed. App running in Offline/Demo mode.", e); 
-        }
+        } catch(e) { console.log("Running in Local Mode"); }
+        
+        const appId = 'family-dinner-planner'; 
 
-        const { useState, useMemo, useEffect, useCallback } = React;
+        const { useState, useMemo, useEffect, useCallback, useRef } = React;
 
         // --- Built-in SVG Icons ---
         const Icons = {
@@ -97,7 +75,9 @@
             Sparkles: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M3 5h4"/><path d="M3 9h4"/></svg>,
             Save: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
             CheckCircle2: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>,
-            // Seasonal Icons
+            Download: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
+            Upload: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>,
+            Settings: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.35a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
             Cloud: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c0-1.7-1.3-3-3-3h-1.1c-.2-1.7-1.7-3-3.4-3-1.9 0-3.5 1.6-3.5 3.5 0 .3 0 .5.1.8-2 .5-3.6 2.3-3.6 4.2 0 2.5 2 4.5 4.5 4.5h10c2.5 0 4.5-2 4.5-4.5s-2-4.5-4.5-4.5z"/></svg>,
             Sun: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>,
             Wind: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg>,
@@ -197,42 +177,44 @@
 
         function App() {
             const [user, setUser] = useState(null);
-            const [dishes, setDishes] = useState(DEFAULT_DISHES);
+            
+            // --- DATA INITIALIZATION & PERSISTENCE ---
+            const [dishes, setDishes] = useState(() => {
+                const saved = localStorage.getItem('tasteHub_dishes');
+                if (saved) {
+                    try {
+                        return JSON.parse(saved);
+                    } catch(e) { return DEFAULT_DISHES; }
+                }
+                return DEFAULT_DISHES;
+            });
+
             const [selectedIds, setSelectedIds] = useState([]);
-            const [view, setView] = useState('categories');
+            const [view, setView] = useState('categories'); // views: categories, category_detail, meal, add, edit, search, share
             const [activeCategory, setActiveCategory] = useState(null);
             const [searchTerm, setSearchTerm] = useState('');
             const [purchasedIngredients, setPurchasedIngredients] = useState(new Set());
             const [formData, setFormData] = useState({ id: null, name: '', category: '蔬菜', ingredients: '' });
+            
+            // State for Export Selection
+            const [exportSelection, setExportSelection] = useState(new Set());
 
-            // 1. Auth Setup
+            // 1. Auth (Optional)
             useEffect(() => {
-                // Only try auth if valid key exists
-                if (!auth) return;
-                
-                const initAuth = async () => {
-                    try {
-                        await auth.signInAnonymously();
-                    } catch (e) { console.warn("Auth warning:", e); }
-                };
-                initAuth();
-                return auth.onAuthStateChanged(setUser);
+                if (auth) {
+                    const initAuth = async () => {
+                        try { await auth.signInAnonymously(); } catch (e) {}
+                    };
+                    initAuth();
+                    return auth.onAuthStateChanged(setUser);
+                }
             }, []);
 
-            // 2. Firestore Sync
-            useEffect(() => {
-                if (!user || !db) return;
-                const dishesRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dishes');
-                
-                const unsubscribe = dishesRef.onSnapshot(snapshot => {
-                    const data = snapshot.docs.map(doc => doc.data());
-                    if (data.length > 0) {
-                        setDishes(data);
-                    }
-                }, error => console.error("Firestore sync error", error));
-                
-                return () => unsubscribe();
-            }, [user]);
+            // 2. Persistence Helper
+            const updateDishes = (newDishes) => {
+                setDishes(newDishes);
+                localStorage.setItem('tasteHub_dishes', JSON.stringify(newDishes));
+            };
 
             const seasonalTip = useMemo(() => {
                 const month = new Date().getMonth() + 1;
@@ -265,13 +247,10 @@
                 setView('edit');
             };
 
-            const deleteDish = async (id) => {
-                if(confirm('確定要從資料庫永久刪除嗎？')) {
-                    if (user && db) {
-                        db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dishes').doc(id.toString()).delete();
-                    }
-                    // Optimistic update
-                    setDishes(prev => prev.filter(d => d.id !== id));
+            const deleteDish = (id) => {
+                if(confirm('確定要永久刪除嗎？')) {
+                    const newDishes = dishes.filter(d => d.id !== id);
+                    updateDishes(newDishes);
                     setSelectedIds(prev => prev.filter(i => i !== id));
                     setView('category_detail'); 
                 }
@@ -291,22 +270,22 @@
                 window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
             };
 
-            const saveDish = async (e) => {
+            const saveDish = (e) => {
                 e.preventDefault();
                 const id = formData.id || Date.now();
-                const dish = { id, name: formData.name, category: formData.category, ingredients: formData.ingredients.split(/[,，\s]+/).filter(Boolean) };
+                const ingredientsArray = formData.ingredients.split(/[,，\s]+/).filter(Boolean);
+                const dish = { id, name: formData.name, category: formData.category, ingredients: ingredientsArray };
                 
-                // Optimistic UI update
-                setDishes(prev => {
-                    const idx = prev.findIndex(d => d.id === id);
-                    if (idx >= 0) { const n = [...prev]; n[idx] = dish; return n; }
-                    return [dish, ...prev];
-                });
-
-                if (user && db) {
-                    await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('dishes').doc(id.toString()).set(dish);
+                // Check if update or new
+                const exists = dishes.find(d => d.id === id);
+                let newDishes;
+                if (exists) {
+                    newDishes = dishes.map(d => d.id === id ? dish : d);
+                } else {
+                    newDishes = [dish, ...dishes];
                 }
                 
+                updateDishes(newDishes);
                 setView('categories');
             };
 
@@ -330,6 +309,71 @@
                     if (next.has(key)) next.delete(key); else next.add(key);
                     return next;
                 });
+            };
+
+            // --- Import / Export Handlers ---
+            const fileInputRef = useRef(null);
+
+            const handleExport = () => {
+                const toExport = dishes.filter(d => exportSelection.has(d.id));
+                if (toExport.length === 0) return alert("Please select at least one dish to export.");
+                
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(toExport));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", "taste_hub_recipes.json");
+                document.body.appendChild(downloadAnchorNode);
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
+            };
+
+            const handleImportClick = () => {
+                fileInputRef.current.click();
+            };
+
+            const handleFileChange = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const imported = JSON.parse(event.target.result);
+                        if (Array.isArray(imported)) {
+                            const existingNames = new Set(dishes.map(d => d.name));
+                            // Filter duplicates and assign new IDs to avoid conflicts
+                            const newDishes = imported.filter(d => !existingNames.has(d.name)).map(d => ({...d, id: Date.now() + Math.random()}));
+                            
+                            if (newDishes.length === 0) {
+                                alert("No new dishes found (duplicates skipped).");
+                            } else {
+                                const combined = [...dishes, ...newDishes];
+                                updateDishes(combined);
+                                alert(`Successfully imported ${newDishes.length} new dishes!`);
+                            }
+                        } else {
+                            alert("Invalid file format.");
+                        }
+                    } catch (err) { alert('Error reading file.'); }
+                };
+                reader.readAsText(file);
+                e.target.value = null; // Reset input
+            };
+
+            const toggleExportSelection = (id) => {
+                setExportSelection(prev => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id);
+                    else next.add(id);
+                    return next;
+                });
+            };
+
+            const selectAllExport = () => {
+                if (exportSelection.size === dishes.length) {
+                    setExportSelection(new Set());
+                } else {
+                    setExportSelection(new Set(dishes.map(d => d.id)));
+                }
             };
 
             const greeting = new Date().getHours() < 12 ? "今朝食乜好？" : "今晚煮乜餸？";
@@ -368,10 +412,17 @@
                                         <p className="text-xs font-bold text-orange-800/80 leading-relaxed">{seasonalTip.text}</p>
                                     </div>
                                 </header>
-                                <button onClick={handleRandomize} className="w-full mb-6 bg-gradient-to-r from-zinc-900 to-zinc-800 p-6 rounded-[2rem] text-white flex items-center justify-between shadow-xl active:scale-95 transition-all">
-                                    <div className="flex items-center gap-3"><Icon name="Shuffle" className="w-5 h-5 text-orange-500" /><span className="font-black text-xl">「隨便啦！」</span></div>
-                                    <Icon name="ChevronRight" className="w-6 h-6 text-zinc-400" />
-                                </button>
+                                
+                                {/* Tools Section */}
+                                <div className="mb-6 flex gap-3">
+                                    <button onClick={handleRandomize} className="flex-1 bg-gradient-to-r from-zinc-900 to-zinc-800 p-4 rounded-[1.5rem] text-white flex items-center justify-between shadow-xl active:scale-95 transition-all">
+                                        <div className="flex items-center gap-2"><Icon name="Shuffle" className="w-5 h-5 text-orange-500" /><span className="font-bold text-sm">隨機抽籤</span></div>
+                                    </button>
+                                    <button onClick={() => { setExportSelection(new Set(dishes.map(d=>d.id))); setView('share'); }} className="bg-white border border-zinc-200 p-4 rounded-[1.5rem] text-zinc-600 flex items-center justify-center shadow-sm active:scale-95 transition-all">
+                                        <Icon name="Settings" className="w-5 h-5" />
+                                    </button>
+                                </div>
+
                                 <div className="grid grid-cols-3 gap-4">
                                     {CATEGORIES.map(cat => (
                                         <button key={cat.name} onClick={() => { setActiveCategory(cat.name); setView('category_detail'); }} className={`relative flex flex-col items-center justify-center aspect-square rounded-[2rem] ${cat.bg} active:scale-90 transition-all border-2 border-transparent hover:border-zinc-200`}>
@@ -480,10 +531,60 @@
                                 </div>
                             </div>
                         )}
+
+                        {/* 6. Share / Backup */}
+                        {view === 'share' && (
+                            <div className="animate-in fade-in duration-300 space-y-8">
+                                <header>
+                                    <div className="flex items-center gap-2 mb-2 text-orange-500"><Icon name="Settings" className="w-4 h-4" /><span className="text-xs font-bold uppercase tracking-widest">Data Center</span></div>
+                                    <h2 className="text-4xl font-black text-zinc-900">Backup & Share</h2>
+                                </header>
+
+                                {/* Export Section */}
+                                <section className="bg-white p-6 rounded-[2rem] border border-zinc-200 shadow-sm">
+                                    <h3 className="font-black text-xl mb-2 flex items-center gap-2"><Icon name="Download" className="w-5 h-5 text-blue-500" /> Export Dishes</h3>
+                                    <p className="text-sm text-zinc-500 mb-4">Select dishes to share with friends or backup.</p>
+                                    
+                                    <div className="flex justify-between items-center mb-4">
+                                        <button onClick={selectAllExport} className="text-xs font-bold text-orange-500 bg-orange-50 px-3 py-1 rounded-full">
+                                            {exportSelection.size === dishes.length ? 'Deselect All' : 'Select All'}
+                                        </button>
+                                        <span className="text-xs font-bold text-zinc-400">{exportSelection.size} Selected</span>
+                                    </div>
+
+                                    <div className="h-64 overflow-y-auto border-2 border-zinc-100 rounded-2xl mb-4 p-2 space-y-2">
+                                        {dishes.map(dish => (
+                                            <div key={dish.id} onClick={() => toggleExportSelection(dish.id)} className={`p-3 rounded-xl border flex justify-between items-center cursor-pointer ${exportSelection.has(dish.id) ? 'bg-blue-50 border-blue-200' : 'bg-white border-zinc-100'}`}>
+                                                <span className="text-sm font-bold">{dish.name}</span>
+                                                <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${exportSelection.has(dish.id) ? 'bg-blue-500 border-blue-500' : 'border-zinc-300'}`}>
+                                                    {exportSelection.has(dish.id) && <Icon name="Check" className="w-3 h-3 text-white" />}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <button onClick={handleExport} className="w-full bg-zinc-900 text-white py-4 rounded-2xl font-bold flex justify-center gap-2 active:scale-95 transition-all">
+                                        <Icon name="Download" className="w-5 h-5" /> Download File
+                                    </button>
+                                </section>
+
+                                {/* Import Section */}
+                                <section className="bg-zinc-100 p-6 rounded-[2rem] border-2 border-dashed border-zinc-300">
+                                    <h3 className="font-black text-xl mb-2 flex items-center gap-2"><Icon name="Upload" className="w-5 h-5 text-green-600" /> Import Dishes</h3>
+                                    <p className="text-sm text-zinc-500 mb-4">Upload a .json file to add new dishes.</p>
+                                    
+                                    <input type="file" accept=".json" ref={fileInputRef} className="hide-file-input" onChange={handleFileChange} />
+                                    
+                                    <button onClick={handleImportClick} className="w-full bg-white border-2 border-zinc-200 text-zinc-900 py-4 rounded-2xl font-bold flex justify-center gap-2 active:scale-95 transition-all hover:bg-zinc-50">
+                                        <Icon name="Plus" className="w-5 h-5" /> Select File to Import
+                                    </button>
+                                </section>
+                            </div>
+                        )}
                     </main>
 
                     {/* Footer Floating Bar */}
-                    {selectedIds.length > 0 && view !== 'meal' && (
+                    {selectedIds.length > 0 && view !== 'meal' && view !== 'share' && (
                         <div className="fixed bottom-8 left-0 right-0 px-6 z-50">
                             <div className="max-w-md mx-auto bg-white/80 backdrop-blur-2xl rounded-[2.5rem] p-4 flex items-center justify-between shadow-2xl border border-white">
                                 <div className="flex items-center gap-5 pl-4">
